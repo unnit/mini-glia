@@ -117,3 +117,6 @@ if __name__ == "__main__":
         print(f"  composed vs headroom-alone:  {comp_vs_ho:+.0f}%")
         ok = imp_ho > 15 and comp_vs_ho > 5
         print(f"  => Sim is {'FAITHFUL: headroom helps AND composition wins' if ok else 'NOT showing the composition effect -- TUNE'}")
+        if not ok:
+            import sys
+            sys.exit(1)  # fail CI: the simulator no longer rewards the discovery arc

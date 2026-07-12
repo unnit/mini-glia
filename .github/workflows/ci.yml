@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: Lint
+        # non-blocking style pass; agent-written scheduler snippets and the
+        # simulator favour readability over strict linting
+        run: ruff check backend/ || true
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Run offline engine tests
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+          MODEL: mock
+        run: |
+          # these run the full agent loop + simulator with a MOCK model, so
+          # they need no API key and never hit Gemini (fast, deterministic).
+          python agent/test_loop_offline.py
+          python sim/schedulers.py
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t mini-glia .
+
+  deploy:
+    needs: [lint, test, docker-build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.LIGHTSAIL_HOST }}
+          username: ${{ secrets.LIGHTSAIL_USER }}
+          key: ${{ secrets.LIGHTSAIL_SSH_KEY }}
+          debug: true
+          script: |
+            set -e
+            cd ${{ secrets.MINI_GLIA_APP_DIR }}
+            git pull --ff-only
+            # GEMINI_API_KEY is read from the .env file on the box (not committed)
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f
+
