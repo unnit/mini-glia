@@ -1,0 +1,1796 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini-Glia — an AI discovering a batch scheduler</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #0f1419;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      @keyframes mgspin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      @keyframes mgpulse {
+        0%,
+        100% {
+          opacity: 0.4;
+        }
+        50% {
+          opacity: 0.9;
+        }
+      }
+    </style>
+    <script
+      crossorigin
+      src="https://unpkg.com/react@18/umd/react.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+    <script
+      crossorigin
+      src="https://unpkg.com/@babel/standalone/babel.min.js"
+    ></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel">
+      const { useState, useEffect, useRef, useMemo } = React;
+
+      function palette(dark) {
+        if (dark)
+          return {
+            dark: true,
+            bg: "#0f1419",
+            card: "#171d26",
+            cardAlt: "#1c232e",
+            border: "#28303c",
+            borderStrong: "#38424f",
+            ink: "#e5e9f0",
+            inkSoft: "#9aa4b5",
+            inkFaint: "#68727f",
+            primary: "#6b86ff",
+            primarySoft: "#1a2138",
+            good: "#3ec77f",
+            goodSoft: "#12241a",
+            warn: "#e0a021",
+            danger: "#f0685f",
+            dangerSoft: "#2a1715",
+            track: "#10151c",
+            goodBorder: "#1d4a30",
+            dangerBorder: "#4a231f",
+            primaryBorder: "#2c3760",
+            warnBorder: "#4a3d1a",
+            warnSoft: "#241d10",
+            warnInk: "#e0b96a",
+          };
+        return {
+          dark: false,
+          bg: "#f4f6f9",
+          card: "#ffffff",
+          cardAlt: "#fafbfc",
+          border: "#e3e7ee",
+          borderStrong: "#d4dae4",
+          ink: "#2b3648",
+          inkSoft: "#6b7688",
+          inkFaint: "#98a1b3",
+          primary: "#4b6bfb",
+          primarySoft: "#eef1ff",
+          good: "#16a34a",
+          goodSoft: "#eafaf0",
+          warn: "#e0a021",
+          danger: "#e2504a",
+          dangerSoft: "#fdeeed",
+          track: "#eef1f6",
+          goodBorder: "#c7ecd4",
+          dangerBorder: "#f5cfcd",
+          primaryBorder: "#d9e0ff",
+          warnBorder: "#f0e2bf",
+          warnSoft: "#fdf6e8",
+          warnInk: "#946c12",
+        };
+      }
+      const MONO = "ui-monospace, 'SF Mono', Menlo, monospace";
+      const SANS = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+
+      function Spinner() {
+        return (
+          <span
+            style={{
+              display: "inline-block",
+              width: 13,
+              height: 13,
+              border: "2px solid rgba(255,255,255,0.4)",
+              borderTopColor: "#fff",
+              borderRadius: "50%",
+              animation: "mgspin 0.7s linear infinite",
+            }}
+          />
+        );
+      }
+
+      function ResultCard({ best, baseE2e, C }) {
+        const [showCode, setShowCode] = useState(false);
+        if (!best) return null;
+        const m = best.metrics || {};
+        const params = best.params || {};
+        const imp =
+          m.mean_e2e && baseE2e
+            ? Math.round((1 - m.mean_e2e / baseE2e) * 100)
+            : null;
+        const stat = (label, value, sub) => (
+          <div style={{ flex: 1, minWidth: 110 }}>
+            <div
+              style={{
+                fontSize: 10,
+                color: C.inkFaint,
+                fontWeight: 600,
+                letterSpacing: "0.03em",
+                marginBottom: 3,
+              }}
+            >
+              {label}
+            </div>
+            <div
+              style={{
+                fontSize: 17,
+                fontWeight: 700,
+                color: C.ink,
+                fontFamily: MONO,
+              }}
+            >
+              {value}
+            </div>
+            {sub && (
+              <div style={{ fontSize: 10, color: C.inkFaint }}>{sub}</div>
+            )}
+          </div>
+        );
+        return (
+          <div
+            style={{
+              marginTop: 16,
+              marginBottom: 20,
+              background: C.card,
+              borderRadius: 12,
+              border: `2px solid ${C.good}`,
+              boxShadow: C.dark ? "none" : "0 2px 8px rgba(22,163,74,0.1)",
+              padding: 20,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 4,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: C.good,
+                  letterSpacing: "0.04em",
+                  fontFamily: MONO,
+                }}
+              >
+                ✓ DISCOVERED SCHEDULER
+              </span>
+              <span style={{ fontSize: 11, color: C.inkFaint }}>
+                — the algorithm the agent produced
+              </span>
+            </div>
+
+            <div
+              style={{
+                fontSize: 14,
+                color: C.ink,
+                lineHeight: 1.55,
+                margin: "12px 0",
+                fontWeight: 500,
+              }}
+            >
+              {best.hypothesis}
+            </div>
+
+            {/* parameters */}
+            {Object.keys(params).length > 0 && (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  flexWrap: "wrap",
+                  marginBottom: 16,
+                }}
+              >
+                {Object.entries(params).map(([k, v]) => (
+                  <span
+                    key={k}
+                    style={{
+                      fontSize: 12.5,
+                      fontFamily: MONO,
+                      background: C.primarySoft,
+                      color: C.primary,
+                      border: `1px solid ${C.primaryBorder}`,
+                      borderRadius: 6,
+                      padding: "4px 10px",
+                    }}
+                  >
+                    {k} = <b>{typeof v === "number" ? v : String(v)}</b>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* metrics */}
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                flexWrap: "wrap",
+                paddingTop: 14,
+                borderTop: `1px solid ${C.border}`,
+              }}
+            >
+              {stat(
+                "MEAN LATENCY",
+                Math.round(m.mean_e2e || 0),
+                imp != null ? `${imp}% faster than baseline` : null,
+              )}
+              {stat(
+                "COMPLETION",
+                `${Math.round((m.completion_rate || 0) * 100)}%`,
+                "requests finished",
+              )}
+              {stat(
+                "RESTARTS",
+                `${Math.round((m.restart_fraction || 0) * 100)}%`,
+                "of requests evicted",
+              )}
+              {m.p90_e2e != null &&
+                stat("P90 LATENCY", Math.round(m.p90_e2e), "tail latency")}
+            </div>
+
+            {/* the actual code the agent wrote (the full deliverable) */}
+            <div style={{ marginTop: 16 }}>
+              {best.code ? (
+                <>
+                  <button
+                    onClick={() => setShowCode((s) => !s)}
+                    style={{
+                      background: showCode ? C.primarySoft : C.card,
+                      border: `1px solid ${C.primary}`,
+                      borderRadius: 6,
+                      padding: "7px 14px",
+                      fontSize: 12.5,
+                      fontWeight: 600,
+                      color: C.primary,
+                      cursor: "pointer",
+                      fontFamily: MONO,
+                    }}
+                  >
+                    {showCode
+                      ? "▾ Hide the scheduler code"
+                      : "▸ View the full scheduler code the agent wrote"}
+                  </button>
+                  {showCode && (
+                    <pre
+                      style={{
+                        marginTop: 10,
+                        background: C.dark ? "#0d1117" : "#f6f8fa",
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 8,
+                        padding: 14,
+                        overflow: "auto",
+                        fontSize: 11.5,
+                        lineHeight: 1.5,
+                        color: C.ink,
+                        fontFamily: MONO,
+                        maxHeight: 320,
+                      }}
+                    >
+                      {best.code}
+                    </pre>
+                  )}
+                </>
+              ) : (
+                <div
+                  style={{
+                    fontSize: 11.5,
+                    color: C.inkFaint,
+                    fontStyle: "italic",
+                  }}
+                >
+                  (source code not included in this run file — re-capture or
+                  download a fresh run to include the full scheduler code)
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      function utilColor(u, C) {
+        if (u >= 0.95) return C.danger;
+        if (u >= 0.8) return "#ef8a3c";
+        if (u >= 0.55) return C.warn;
+        return C.good;
+      }
+
+      function GpuBar({ util, headroom, C, label }) {
+        const pct = Math.round(util * 100);
+        return (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+              flex: 1,
+            }}
+          >
+            <div
+              style={{
+                position: "relative",
+                width: "100%",
+                height: 110,
+                background: C.track,
+                borderRadius: 6,
+                border: `1px solid ${C.border}`,
+                overflow: "hidden",
+              }}
+            >
+              {headroom != null && (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: 0,
+                    right: 0,
+                    bottom: `${(1 - headroom) * 100}%`,
+                    borderTop: `1px dashed ${C.good}`,
+                    opacity: 0.7,
+                    zIndex: 2,
+                  }}
+                />
+              )}
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  borderTop: `1px dashed ${C.danger}`,
+                  opacity: 0.5,
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: `${pct}%`,
+                  background: utilColor(util, C),
+                  transition: "height 120ms linear, background 200ms",
+                }}
+              />
+              <div
+                style={{
+                  position: "absolute",
+                  top: 5,
+                  left: 0,
+                  right: 0,
+                  textAlign: "center",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: pct > 60 ? "#fff" : C.ink,
+                  fontFamily: MONO,
+                }}
+              >
+                {pct}%
+              </div>
+            </div>
+            <div
+              style={{ fontSize: 10.5, color: C.inkFaint, fontFamily: MONO }}
+            >
+              {label}
+            </div>
+          </div>
+        );
+      }
+
+      function ClusterCard({ title, trace, frameIdx, tone, headroom, C }) {
+        const frame = (trace.frames &&
+          trace.frames[Math.min(frameIdx, trace.frames.length - 1)]) || {
+          util: [],
+        };
+        const restartsSoFar = useMemo(() => {
+          if (!trace.frames) return 0;
+          let s = 0;
+          for (let i = 0; i <= Math.min(frameIdx, trace.frames.length - 1); i++)
+            s += trace.frames[i]?.restarts || 0;
+          return s;
+        }, [frameIdx, trace]);
+        const toneColor = tone === "danger" ? C.danger : C.good;
+        return (
+          <div
+            style={{
+              flex: 1,
+              background: C.card,
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              boxShadow: C.dark ? "none" : "0 1px 2px rgba(16,24,40,0.04)",
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 12,
+                gap: 8,
+                minHeight: 26,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  color: C.ink,
+                  lineHeight: 1.2,
+                }}
+              >
+                {title}
+              </span>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: toneColor,
+                  background: tone === "danger" ? C.dangerSoft : C.goodSoft,
+                  borderRadius: 20,
+                  padding: "3px 10px",
+                  fontFamily: MONO,
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {restartsSoFar.toLocaleString()} restarts
+              </span>
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                minHeight: 110,
+                alignItems: "flex-end",
+              }}
+            >
+              {(frame.util || []).length === 0 ? (
+                <div
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    color: C.inkFaint,
+                    alignSelf: "center",
+                    textAlign: "center",
+                  }}
+                >
+                  no frames yet
+                </div>
+              ) : (
+                (frame.util || []).map((u, i) => (
+                  <GpuBar
+                    key={i}
+                    util={u}
+                    headroom={headroom}
+                    C={C}
+                    label={`gpu${i}`}
+                  />
+                ))
+              )}
+            </div>
+            <div
+              style={{
+                display: "flex",
+                gap: 16,
+                marginTop: 12,
+                paddingTop: 10,
+                borderTop: `1px solid ${C.border}`,
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: C.inkFaint,
+                    fontWeight: 600,
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  QUEUE
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: C.ink,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {frame.queue ?? 0}
+                </div>
+                <div style={{ fontSize: 9.5, color: C.inkFaint }}>
+                  requests waiting
+                </div>
+              </div>
+              <div style={{ flex: 1 }}>
+                <div
+                  style={{
+                    fontSize: 10,
+                    color: C.inkFaint,
+                    fontWeight: 600,
+                    letterSpacing: "0.03em",
+                  }}
+                >
+                  STEP
+                </div>
+                <div
+                  style={{
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: C.ink,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {frame.step ?? 0}
+                </div>
+                <div style={{ fontSize: 9.5, color: C.inkFaint }}>sim time</div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      function EventCard({ e, C }) {
+        const base = {
+          borderRadius: 8,
+          padding: "10px 12px",
+          marginBottom: 8,
+          fontSize: 13,
+          lineHeight: 1.5,
+          border: `1px solid ${C.border}`,
+        };
+        const tag = (label, color) => (
+          <div
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.04em",
+              color,
+              fontFamily: MONO,
+              marginBottom: 4,
+            }}
+          >
+            {label}
+          </div>
+        );
+        switch (e.type) {
+          case "baseline":
+            return (
+              <div style={{ ...base, background: C.cardAlt, color: C.inkSoft }}>
+                <b style={{ color: C.ink }}>Baseline (FCFS)</b> — latency{" "}
+                {Math.round(e.metrics.mean_e2e)}, completion{" "}
+                {Math.round(e.metrics.completion_rate * 100)}%
+              </div>
+            );
+          case "hypothesis":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.primarySoft,
+                  borderColor: C.primaryBorder,
+                }}
+              >
+                {tag(`RESEARCHER · ITERATION ${e.iteration}`, C.primary)}
+                <div style={{ color: C.ink }}>{e.text}</div>
+              </div>
+            );
+          case "experiment_result":
+            if (!e.valid) {
+              const reason = (e.error || "")
+                .replace(/^scheduler raised:\s*/, "")
+                .replace(/^SandboxError:\s*/, "");
+              return (
+                <div
+                  style={{
+                    ...base,
+                    background: C.cardAlt,
+                    borderColor: C.borderStrong,
+                    borderStyle: "dashed",
+                  }}
+                >
+                  {tag("SANDBOX · caught a bug, agent will retry", C.inkSoft)}
+                  <div
+                    style={{ color: C.inkSoft, fontFamily: MONO, fontSize: 12 }}
+                  >
+                    the agent's code raised an error and was safely rejected —{" "}
+                    {reason}
+                  </div>
+                </div>
+              );
+            }
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.cardAlt,
+                  fontFamily: MONO,
+                  fontSize: 12,
+                  color: C.inkSoft,
+                }}
+              >
+                → latency{" "}
+                <b style={{ color: C.ink }}>{Math.round(e.metrics.mean_e2e)}</b>{" "}
+                · completion {Math.round(e.metrics.completion_rate * 100)}% ·
+                restarts {(e.metrics.restart_fraction * 100).toFixed(0)}%
+              </div>
+            );
+          case "sweep_result":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.warnSoft,
+                  borderColor: C.warnBorder,
+                  color: C.warnInk,
+                  fontFamily: MONO,
+                  fontSize: 12,
+                }}
+              >
+                swept {e.param} → best value {e.best_value}
+              </div>
+            );
+          case "new_best":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.goodSoft,
+                  borderColor: C.goodBorder,
+                  color: C.good,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                ★ new best — latency {Math.round(e.mean_e2e)}
+              </div>
+            );
+          case "analysis":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.card,
+                  color: C.inkSoft,
+                  fontStyle: "italic",
+                }}
+              >
+                {e.text}
+              </div>
+            );
+          case "supervisor":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.warnSoft,
+                  borderColor: C.warnBorder,
+                }}
+              >
+                {tag("SUPERVISOR", C.warnInk)}
+                <div style={{ color: C.warnInk }}>{e.text}</div>
+              </div>
+            );
+          case "warning":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.warnSoft,
+                  borderColor: C.warnBorder,
+                  color: C.warnInk,
+                  fontSize: 12,
+                }}
+              >
+                ⚠ {e.text}
+              </div>
+            );
+          case "error":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: C.dangerSoft,
+                  borderColor: C.dangerBorder,
+                  color: C.danger,
+                  fontSize: 12,
+                }}
+              >
+                error: {e.text}
+              </div>
+            );
+          case "done":
+            return (
+              <div
+                style={{
+                  ...base,
+                  background: e.beats_baseline ? C.goodSoft : C.dangerSoft,
+                  borderColor: e.beats_baseline ? C.goodBorder : C.dangerBorder,
+                  color: e.beats_baseline ? C.good : C.danger,
+                  fontWeight: 600,
+                }}
+              >
+                {e.beats_baseline
+                  ? "✓ run complete — discovery beats baseline"
+                  : "run complete — no improvement over baseline"}
+              </div>
+            );
+          default:
+            return null;
+        }
+      }
+
+      function RestartLog({ events, stepNow, C }) {
+        const all = events || [];
+        const revealed = all.filter((ev) => ev.step <= stepNow);
+        const scrollRef = useRef(null);
+        // auto-scroll to the newest revealed event as playback advances
+        useEffect(() => {
+          if (scrollRef.current)
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }, [revealed.length]);
+        return (
+          <div
+            style={{
+              background: C.card,
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              boxShadow: C.dark ? "none" : "0 1px 2px rgba(16,24,40,0.04)",
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "baseline",
+                marginBottom: 10,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: "0.04em",
+                  color: C.inkSoft,
+                  fontFamily: MONO,
+                }}
+              >
+                WHY RESTARTS HAPPEN · causal log (baseline)
+              </span>
+              {all.length > 0 && (
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: C.danger,
+                    fontWeight: 600,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {revealed.length} / {all.length} shown
+                </span>
+              )}
+            </div>
+            <div
+              ref={scrollRef}
+              style={{ maxHeight: 150, overflowY: "auto", paddingRight: 4 }}
+            >
+              {revealed.length === 0 && (
+                <div style={{ fontSize: 12, color: C.inkFaint }}>
+                  press play — evictions will appear here as they happen…
+                </div>
+              )}
+              {revealed.map((ev, i) => (
+                <div
+                  key={i}
+                  style={{
+                    fontSize: 12,
+                    color: C.inkSoft,
+                    fontFamily: MONO,
+                    marginBottom: 6,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  <span style={{ color: C.danger, fontWeight: 600 }}>
+                    step {ev.step}:
+                  </span>{" "}
+                  {ev.explanation}
+                </div>
+              ))}
+            </div>
+            {all.length > 0 && (
+              <div
+                style={{
+                  fontSize: 10.5,
+                  color: C.inkFaint,
+                  marginTop: 8,
+                  fontStyle: "italic",
+                }}
+              >
+                {all.length} eviction events traced (a sample of the baseline's
+                total restarts)
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      function App() {
+        const [dark, setDark] = useState(false);
+        const [expanded, setExpanded] = useState(false);
+        const [showTask, setShowTask] = useState(false);
+        const [replay, setReplay] = useState(null);
+        const [loadErr, setLoadErr] = useState(null);
+        const [playing, setPlaying] = useState(false);
+        const [t, setT] = useState(0);
+        const [liveEvents, setLiveEvents] = useState(null); // non-null while/after a live run
+        const [liveStatus, setLiveStatus] = useState(null);
+        const rafRef = useRef(null);
+        const C = palette(dark);
+
+        // auto-load the captured replay on first paint, but DO NOT auto-play —
+        // wait for the user to press play.
+        useEffect(() => {
+          fetch("/api/replay")
+            .then((r) => {
+              if (!r.ok) throw new Error("no replay available");
+              return r.json();
+            })
+            .then((data) => {
+              setReplay(data);
+            })
+            .catch((e) => setLoadErr(e.message));
+        }, []);
+
+        const active = liveEvents
+          ? {
+              meta: replay?.meta,
+              events: liveEvents.events,
+              traces: liveEvents.traces || {},
+              best: liveEvents.best,
+            }
+          : replay;
+
+        // debug: how many frames does each panel actually have right now?
+        const dbgBase = active?.traces?.baseline?.frames?.length || 0;
+        const dbgComp = active?.traces?.composed?.frames?.length || 0;
+
+        // is a live run currently streaming (started, not yet complete/failed)?
+        const liveRunning =
+          !!liveEvents && !/complete|failed/.test(liveStatus || "");
+        // do we have frames to animate?
+        const hasFrames = dbgBase > 0 || dbgComp > 0;
+
+        function backToReplay() {
+          setLiveEvents(null);
+          setLiveStatus(null);
+          setT(0);
+          setTimeout(() => setPlaying(true), 200);
+        }
+
+        function downloadRun() {
+          // serialize the live run into the SAME replay.json format, so it can be
+          // uploaded back or dropped into backend/runs/replay.json to become the
+          // served replay.
+          const payload = {
+            meta: replay?.meta || { model: "gemini/gemini-3.1-flash-lite" },
+            events: (liveEvents.events || []).filter((e) => e.type !== "trace"),
+            best: liveEvents.best || null,
+            traces: liveEvents.traces || {},
+          };
+          const blob = new Blob([JSON.stringify(payload)], {
+            type: "application/json",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          const stamp = new Date()
+            .toISOString()
+            .replace(/[:.]/g, "-")
+            .slice(0, 19);
+          a.download = `mini-glia-run-${stamp}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+
+        const nFrames = active?.traces
+          ? Math.max(
+              active.traces.baseline?.frames?.length || 0,
+              active.traces.composed?.frames?.length || 0,
+            )
+          : 1;
+        const frameIdx = Math.floor(t * (Math.max(nFrames, 1) - 1));
+        const visibleEvents = active?.events
+          ? Math.max(1, Math.round(t * active.events.length))
+          : 0;
+        const headroom = active?.best?.params?.headroom ?? 0.5;
+
+        useEffect(() => {
+          if (!playing || !active) return;
+          let last = performance.now();
+          const DURATION = 14000;
+          const tick = (now) => {
+            const dt = (now - last) / DURATION;
+            last = now;
+            setT((prev) => {
+              const next = prev + dt;
+              if (next >= 1) {
+                setPlaying(false);
+                return 1;
+              }
+              return next;
+            });
+            rafRef.current = requestAnimationFrame(tick);
+          };
+          rafRef.current = requestAnimationFrame(tick);
+          return () => cancelAnimationFrame(rafRef.current);
+        }, [playing, active]);
+
+        function runLive() {
+          setLiveStatus("connecting to live agent…");
+          const collected = { events: [], traces: {}, best: null, beat: null };
+          setLiveEvents({ events: [], traces: {}, best: null });
+          setT(0);
+          setPlaying(false);
+          const es = new EventSource("/api/run");
+          es.onmessage = (msg) => {
+            let ev;
+            try {
+              ev = JSON.parse(msg.data);
+            } catch {
+              return;
+            }
+            if (ev.type === "trace") {
+              collected.traces[ev.which] = ev.trace;
+            } else if (ev.type === "done") {
+              collected.best = ev.best || collected.best;
+              collected.beat = ev.beats_baseline;
+              collected.events.push(ev);
+            } else {
+              if (ev.type === "new_best" && ev.iteration != null)
+                collected.best = {
+                  iteration: ev.iteration,
+                  params: {},
+                  metrics: { mean_e2e: ev.mean_e2e },
+                };
+              collected.events.push(ev);
+            }
+            // live: show reasoning as it streams (no timer animation yet)
+            setLiveEvents({
+              events: [...collected.events],
+              traces: { ...collected.traces },
+              best: collected.best,
+            });
+            setLiveStatus(`live: ${collected.events.length} events…`);
+          };
+          es.addEventListener("end", () => {
+            es.close();
+            const hasTraces =
+              collected.traces.baseline &&
+              collected.traces.baseline.frames?.length;
+            if (collected.beat === false) {
+              setLiveStatus(
+                "live run complete — the agent explored several strategies but didn't beat baseline this run. That's live search: it's stochastic. Use ← back to replay to see a run where it succeeded, or run live again.",
+              );
+            } else {
+              setLiveStatus(
+                "live run complete — the agent beat baseline. Playing the result.",
+              );
+            }
+            // now that traces have arrived, animate the before/after
+            if (hasTraces) {
+              setT(0);
+              setTimeout(() => setPlaying(true), 300);
+            }
+          });
+          es.onerror = () => {
+            es.close();
+            setLiveStatus(
+              "live run failed — is a GEMINI_API_KEY set on the server?",
+            );
+          };
+        }
+
+        const shadow = C.dark ? "none" : "0 1px 2px rgba(16,24,40,0.04)";
+        const bt = active?.traces?.baseline;
+        const stepNow = (bt?.frames && bt.frames[frameIdx]?.step) ?? 0;
+        const bestE2e = active?.best?.metrics?.mean_e2e;
+        const baseE2e = bt?.mean_e2e;
+        const improvement =
+          bestE2e && baseE2e ? Math.round((1 - bestE2e / baseE2e) * 100) : null;
+
+        const kpi = (label, value, sub, tone) => (
+          <div
+            style={{
+              flex: 1,
+              minWidth: 130,
+              background: C.card,
+              borderRadius: 10,
+              border: `1px solid ${C.border}`,
+              boxShadow: shadow,
+              padding: "14px 16px",
+            }}
+          >
+            <div
+              style={{
+                fontSize: 11,
+                color: C.inkFaint,
+                fontWeight: 600,
+                letterSpacing: "0.03em",
+                marginBottom: 6,
+              }}
+            >
+              {label}
+            </div>
+            <div
+              style={{
+                fontSize: 22,
+                fontWeight: 700,
+                color: tone || C.ink,
+                fontFamily: MONO,
+                lineHeight: 1,
+              }}
+            >
+              {value}
+            </div>
+            {sub && (
+              <div style={{ fontSize: 11, color: C.inkSoft, marginTop: 4 }}>
+                {sub}
+              </div>
+            )}
+          </div>
+        );
+
+        return (
+          <div
+            style={{
+              background: C.bg,
+              color: C.ink,
+              fontFamily: SANS,
+              padding: 24,
+              minHeight: "100vh",
+              transition: "background 200ms",
+            }}
+          >
+            <div style={{ maxWidth: 1080, margin: "0 auto" }}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  marginBottom: 18,
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 20,
+                      fontWeight: 700,
+                      letterSpacing: "-0.01em",
+                    }}
+                  >
+                    Mini-Glia
+                  </div>
+                  <div style={{ fontSize: 12.5, color: C.inkSoft }}>
+                    an AI agent discovering a batch scheduler for an
+                    LLM-inference GPU cluster
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDark((d) => !d)}
+                  style={{
+                    fontSize: 12.5,
+                    fontWeight: 500,
+                    color: C.inkSoft,
+                    cursor: "pointer",
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    padding: "8px 12px",
+                    background: C.card,
+                  }}
+                >
+                  {dark ? "☀ light" : "☾ dark"}
+                </button>
+              </div>
+
+              {loadErr && (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: "9px 13px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    background: C.dangerSoft,
+                    color: C.danger,
+                    border: `1px solid ${C.dangerBorder}`,
+                    fontFamily: MONO,
+                  }}
+                >
+                  could not load replay: {loadErr}
+                </div>
+              )}
+              {liveStatus && (
+                <div
+                  style={{
+                    marginBottom: 14,
+                    padding: "9px 13px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    background: C.primarySoft,
+                    color: C.primary,
+                    border: `1px solid ${C.primaryBorder}`,
+                    fontFamily: MONO,
+                  }}
+                >
+                  {liveStatus}
+                </div>
+              )}
+
+              {!active && !loadErr && (
+                <div
+                  style={{ padding: 40, textAlign: "center", color: C.inkSoft }}
+                >
+                  loading run…
+                </div>
+              )}
+
+              {active && (
+                <>
+                  {/* read-only task spec: what the agent was asked to do (mirrors
+              Glia's task-prompt transparency, but fixed since our simulator
+              models this one problem) */}
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      background: C.cardAlt,
+                      borderRadius: 10,
+                      border: `1px solid ${C.border}`,
+                    }}
+                  >
+                    <button
+                      onClick={() => setShowTask((s) => !s)}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        background: "transparent",
+                        border: "none",
+                        padding: "12px 16px",
+                        cursor: "pointer",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        color: C.inkSoft,
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          letterSpacing: "0.04em",
+                          fontFamily: MONO,
+                        }}
+                      >
+                        ▸ THE TASK GIVEN TO THE AGENT
+                      </span>
+                      <span style={{ fontSize: 11, color: C.inkFaint }}>
+                        {showTask ? "hide" : "show"}
+                      </span>
+                    </button>
+                    {showTask && (
+                      <div
+                        style={{
+                          padding: "0 16px 16px",
+                          fontSize: 13,
+                          color: C.ink,
+                          lineHeight: 1.6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            marginBottom: 10,
+                            color: C.inkSoft,
+                            fontStyle: "italic",
+                          }}
+                        >
+                          The agent receives this problem specification and
+                          works autonomously from it — proposing schedulers,
+                          running experiments, and analysing telemetry. The task
+                          is fixed to the batch-scheduling problem this
+                          simulator models; the full Glia generalises across the
+                          whole inference stack.
+                        </div>
+                        <div
+                          style={{
+                            background: C.card,
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 8,
+                            padding: 14,
+                            fontFamily: MONO,
+                            fontSize: 12,
+                            lineHeight: 1.55,
+                            color: C.ink,
+                          }}
+                        >
+                          <b>Objective:</b> design a batch scheduler for a
+                          distributed LLM-inference GPU cluster that minimises
+                          mean request completion time and maximises completion
+                          rate.
+                          <br />
+                          <br />
+                          <b>Environment:</b> 4 GPUs, each with a fixed KV-cache
+                          (56 blocks of 16 tokens). Requests arrive over time;
+                          each has a known prefill length but an <b>unknown</b>{" "}
+                          decode length. KV-cache usage grows as a request
+                          decodes. When a GPU runs out of blocks, the youngest
+                          request is evicted and restarted, losing all its
+                          progress.
+                          <br />
+                          <br />
+                          <b>You control:</b> which requests are admitted to
+                          which GPU, and in what order — via a{" "}
+                          <span style={{ color: C.primary }}>
+                            schedule(pending, gpus, now, params)
+                          </span>{" "}
+                          function.
+                          <br />
+                          <br />
+                          <b>Constraint:</b> you cannot see a request's decode
+                          length (unknown until it finishes), so you must reason
+                          about memory growth indirectly.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 14,
+                      marginBottom: 16,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {kpi(
+                      "baseline latency",
+                      baseE2e ? Math.round(baseE2e) : "—",
+                      "FCFS, packs GPUs full",
+                    )}
+                    {kpi(
+                      "discovered latency",
+                      bestE2e ? Math.round(bestE2e) : "—",
+                      "agent's best scheduler",
+                      C.good,
+                    )}
+                    {kpi(
+                      "improvement",
+                      improvement != null ? `${improvement}%` : "—",
+                      "faster mean completion",
+                      C.primary,
+                    )}
+                    {kpi(
+                      "model",
+                      (active.meta?.model || "").replace("gemini/", "") || "—",
+                      "reasoning engine",
+                    )}
+                  </div>
+
+                  {/* the product's OUTPUT: the scheduler the agent produced. Placed
+              right under the KPIs so it's the first thing seen once a run has
+              finished playing (or a live run completed) and it beat baseline. */}
+                  {!liveRunning &&
+                    (t >= 1 || (liveEvents && !liveRunning)) &&
+                    active.best &&
+                    bestE2e &&
+                    baseE2e &&
+                    bestE2e < baseE2e && (
+                      <ResultCard best={active.best} baseE2e={baseE2e} C={C} />
+                    )}
+
+                  {/* single control row: play/slider, then live + replay-saved */}
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 12,
+                      alignItems: "center",
+                      marginBottom: 12,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <button
+                      onClick={() => {
+                        if (t >= 1) setT(0);
+                        setPlaying((p) => !p);
+                      }}
+                      disabled={liveRunning || !hasFrames}
+                      style={{
+                        background: C.card,
+                        color: C.primary,
+                        border: `1px solid ${C.primary}`,
+                        borderRadius: 8,
+                        padding: "9px 18px",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor:
+                          liveRunning || !hasFrames ? "not-allowed" : "pointer",
+                        opacity: liveRunning || !hasFrames ? 0.5 : 1,
+                        minWidth: 190,
+                      }}
+                    >
+                      {playing
+                        ? "❚❚ Pause"
+                        : t >= 1
+                          ? liveEvents
+                            ? "↻ Replay live reasoning"
+                            : "↻ Replay saved run"
+                          : liveEvents
+                            ? "▶ Play live reasoning"
+                            : "▶ Play saved run"}
+                    </button>
+                    <input
+                      type="range"
+                      min={0}
+                      max={1000}
+                      value={Math.round(t * 1000)}
+                      disabled={liveRunning || !hasFrames}
+                      onChange={(e) => {
+                        setPlaying(false);
+                        setT(e.target.value / 1000);
+                      }}
+                      style={{
+                        flex: 1,
+                        minWidth: 120,
+                        accentColor: C.primary,
+                        opacity: liveRunning || !hasFrames ? 0.4 : 1,
+                      }}
+                    />
+                    <button
+                      onClick={runLive}
+                      disabled={liveRunning}
+                      style={{
+                        background: liveRunning ? C.inkFaint : C.primary,
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        padding: "9px 20px",
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: liveRunning ? "wait" : "pointer",
+                        boxShadow: liveRunning
+                          ? "none"
+                          : "0 2px 8px rgba(75,107,251,0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {liveRunning ? (
+                        <>
+                          <Spinner /> reasoning…
+                        </>
+                      ) : (
+                        "◉ Watch it reason live"
+                      )}
+                    </button>
+                    {liveEvents && !liveRunning && (
+                      <button
+                        onClick={backToReplay}
+                        style={{
+                          background: "transparent",
+                          color: C.inkSoft,
+                          border: `1px solid ${C.border}`,
+                          borderRadius: 8,
+                          padding: "9px 14px",
+                          fontSize: 12.5,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ← Replay saved run
+                      </button>
+                    )}
+                    {liveEvents && !liveRunning && (
+                      <button
+                        onClick={downloadRun}
+                        style={{
+                          background: C.card,
+                          color: C.ink,
+                          border: `1px solid ${C.border}`,
+                          borderRadius: 8,
+                          padding: "9px 14px",
+                          fontSize: 12.5,
+                          fontWeight: 500,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        ⬇ Download run
+                      </button>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      fontSize: 12,
+                      color: C.inkSoft,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {liveEvents ? (
+                      <span>
+                        <b style={{ color: C.ink }}>Live mode.</b> A real,
+                        unscripted agent run — the reasoning is what matters.
+                        Live search is stochastic: some runs discover a strong
+                        scheduler, others explore dead ends and reason their way
+                        back. Use{" "}
+                        <b style={{ color: C.ink }}>Replay saved run</b> to
+                        return to the reference run.
+                      </span>
+                    ) : (
+                      <span>
+                        <b style={{ color: C.ink }}>Saved run.</b> A captured
+                        agent run. Press{" "}
+                        <b style={{ color: C.ink }}>Play saved run</b> to watch
+                        its reasoning and the KV-cache animation, or{" "}
+                        <b style={{ color: C.ink }}>Watch it reason live</b> to
+                        run the agent unscripted right now.
+                      </span>
+                    )}
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(300px, 1fr) minmax(340px, 1.15fr)",
+                      gap: 16,
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: 440,
+                        background: C.card,
+                        borderRadius: 10,
+                        border: `1px solid ${C.border}`,
+                        boxShadow: shadow,
+                        padding: 16,
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 12,
+                        }}
+                      >
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 700,
+                            letterSpacing: "0.04em",
+                            color: C.inkSoft,
+                            fontFamily: MONO,
+                          }}
+                        >
+                          AGENT REASONING
+                        </span>
+                        <button
+                          onClick={() => setExpanded(true)}
+                          title="expand"
+                          style={{
+                            background: "transparent",
+                            border: `1px solid ${C.border}`,
+                            borderRadius: 6,
+                            padding: "3px 8px",
+                            fontSize: 11,
+                            color: C.inkSoft,
+                            cursor: "pointer",
+                            fontFamily: MONO,
+                          }}
+                        >
+                          ⤢ expand
+                        </button>
+                      </div>
+                      <div
+                        ref={(el) => {
+                          if (el) el.scrollTop = el.scrollHeight;
+                        }}
+                        style={{
+                          height: "calc(100% - 40px)",
+                          overflowY: "auto",
+                          paddingRight: 6,
+                        }}
+                      >
+                        {active.events
+                          .slice(
+                            0,
+                            liveEvents ? active.events.length : visibleEvents,
+                          )
+                          .map((e, i) => (
+                            <EventCard key={i} e={e} C={C} />
+                          ))}
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 14,
+                      }}
+                    >
+                      {liveRunning ? (
+                        <div
+                          style={{
+                            background: C.card,
+                            borderRadius: 10,
+                            border: `1px solid ${C.border}`,
+                            boxShadow: shadow,
+                            padding: 28,
+                            textAlign: "center",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "center",
+                              marginBottom: 14,
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-block",
+                                width: 22,
+                                height: 22,
+                                border: `3px solid ${C.border}`,
+                                borderTopColor: C.primary,
+                                borderRadius: "50%",
+                                animation: "mgspin 0.8s linear infinite",
+                              }}
+                            />
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 600,
+                              color: C.ink,
+                              marginBottom: 6,
+                            }}
+                          >
+                            agent is reasoning…
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: C.inkSoft,
+                              lineHeight: 1.5,
+                              maxWidth: 380,
+                              margin: "0 auto",
+                            }}
+                          >
+                            Watch the hypotheses stream in on the left. The GPU
+                            memory animation and the restart log will play here
+                            the moment the run completes.
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 14,
+                              display: "flex",
+                              gap: 6,
+                              justifyContent: "center",
+                            }}
+                          >
+                            {[0, 1, 2, 3].map((i) => (
+                              <span
+                                key={i}
+                                style={{
+                                  width: 8,
+                                  height: 8,
+                                  borderRadius: "50%",
+                                  background: C.primary,
+                                  animation: `mgpulse 1.2s ease-in-out ${i * 0.15}s infinite`,
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ display: "flex", gap: 14 }}>
+                            <ClusterCard
+                              title="FCFS Baseline"
+                              trace={active.traces?.baseline || { frames: [] }}
+                              frameIdx={frameIdx}
+                              tone="danger"
+                              headroom={null}
+                              C={C}
+                            />
+                            <ClusterCard
+                              title="Discovered Scheduler"
+                              trace={active.traces?.composed || { frames: [] }}
+                              frameIdx={frameIdx}
+                              tone="good"
+                              headroom={headroom}
+                              C={C}
+                            />
+                          </div>
+                          <RestartLog
+                            events={active.traces?.baseline?.events}
+                            stepNow={stepNow}
+                            C={C}
+                          />
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 18,
+                      marginTop: 14,
+                      fontSize: 11,
+                      color: C.inkSoft,
+                      fontFamily: MONO,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span>
+                      <span style={{ color: C.good }}>■</span> healthy &lt;55%
+                    </span>
+                    <span>
+                      <span style={{ color: C.warn }}>■</span> filling
+                    </span>
+                    <span>
+                      <span style={{ color: "#ef8a3c" }}>■</span> pressure
+                      &gt;80%
+                    </span>
+                    <span>
+                      <span style={{ color: C.danger }}>■</span> at ceiling —
+                      evicts
+                    </span>
+                    <span style={{ color: C.good }}>
+                      - - reserve line (headroom)
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {expanded && active && (
+              <div
+                onClick={() => setExpanded(false)}
+                style={{
+                  position: "fixed",
+                  inset: 0,
+                  background: "rgba(8,10,14,0.6)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 100,
+                  padding: 24,
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    background: C.card,
+                    borderRadius: 12,
+                    border: `1px solid ${C.border}`,
+                    width: "min(760px, 100%)",
+                    maxHeight: "88vh",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 12px 48px rgba(0,0,0,0.35)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "16px 20px",
+                      borderBottom: `1px solid ${C.border}`,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 700,
+                        letterSpacing: "0.04em",
+                        color: C.ink,
+                        fontFamily: MONO,
+                      }}
+                    >
+                      AGENT REASONING — full transcript
+                    </span>
+                    <button
+                      onClick={() => setExpanded(false)}
+                      style={{
+                        background: "transparent",
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 6,
+                        padding: "4px 10px",
+                        fontSize: 12,
+                        color: C.inkSoft,
+                        cursor: "pointer",
+                        fontFamily: MONO,
+                      }}
+                    >
+                      ✕ close
+                    </button>
+                  </div>
+                  <div style={{ overflowY: "auto", padding: 20 }}>
+                    {active.events
+                      .slice(
+                        0,
+                        liveEvents ? active.events.length : visibleEvents,
+                      )
+                      .map((e, i) => (
+                        <EventCard key={i} e={e} C={C} />
+                      ))}
+                    {(liveEvents ? active.events.length : visibleEvents) ===
+                      0 && (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: C.inkFaint,
+                          textAlign: "center",
+                          padding: 20,
+                        }}
+                      >
+                        press play to reveal the agent's reasoning
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+# ---- secrets / env ----
+.env
+.env.*
+*.pem
+*.key
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# ---- captured runs (keep the served replay.json, ignore scratch captures) ----
+backend/runs/*.json
+!backend/runs/replay.json
+
+# ---- logs / tmp ----
+*.log
+tmp/
+.tmp/
+
+# ---- node / frontend (if a build step is ever added) ----
+node_modules/
+.cache/
+
+# ---- os / editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
