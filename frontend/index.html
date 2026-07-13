@@ -876,7 +876,7 @@
             .catch((e) => setLoadErr(e.message));
         }, []);
 
-        const active = liveEvents
+        const activeRaw = liveEvents
           ? {
               meta: replay?.meta,
               events: liveEvents.events,
@@ -884,6 +884,28 @@
               best: liveEvents.best,
             }
           : replay;
+
+        // a run file (or a downloaded live run) can contain two 'done' events — the
+        // agent loop emits one and the server emits a final one. Collapse to a single
+        // trailing 'done' so the "run complete" card never renders twice, whatever
+        // the source.
+        const active =
+          activeRaw && activeRaw.events
+            ? {
+                ...activeRaw,
+                events: (() => {
+                  const seenDone = activeRaw.events.filter(
+                    (e) => e.type === "done",
+                  ).length;
+                  if (seenDone <= 1) return activeRaw.events;
+                  let kept = 0;
+                  const total = seenDone;
+                  return activeRaw.events.filter(
+                    (e) => e.type !== "done" || ++kept === total,
+                  );
+                })(),
+              }
+            : activeRaw;
 
         // debug: how many frames does each panel actually have right now?
         const dbgBase = active?.traces?.baseline?.frames?.length || 0;
@@ -981,6 +1003,11 @@
             } else if (ev.type === "done") {
               collected.best = ev.best || collected.best;
               collected.beat = ev.beats_baseline;
+              // the loop emits its own done AND the server emits a final done; keep
+              // only the latest so the "run complete" card renders once, not twice.
+              collected.events = collected.events.filter(
+                (e) => e.type !== "done",
+              );
               collected.events.push(ev);
             } else {
               if (ev.type === "new_best" && ev.iteration != null)
