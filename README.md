@@ -8,6 +8,7 @@
   <img src="https://img.shields.io/badge/Gemini-Flash--Lite-4285F4?logo=googlegemini&logoColor=white" alt="Gemini" />
   <img src="https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white" alt="Docker" />
   <img src="https://img.shields.io/badge/license-MIT-green" alt="MIT" />
+  <a href="https://mini-glia.dtlabs.me"><img src="https://img.shields.io/badge/live_demo-mini--glia.dtlabs.me-4b6bfb?logo=googlechrome&logoColor=white" alt="Live demo" /></a>
 </p>
 
 <p align="center">
@@ -27,7 +28,7 @@
 
 ## What this is (and isn't)
 
-This is a **faithful reproduction of the Glia paper's *method***, built to understand
+This is a **faithful reproduction of the Glia paper's _method_**, built to understand
 and demonstrate the two-agent reasoning loop — not a reimplementation of the full
 system. Specifically:
 
@@ -36,18 +37,28 @@ system. Specifically:
   composition but never sees the code — exactly as described in §4 of the paper.
 - The **discovered insight is real**: the agent independently finds that
   packing GPUs to capacity triggers KV-cache evictions, and that reserving
-  *headroom* for unknown decode growth fixes it — the paper's Head-Room Allocator.
+  _headroom_ for unknown decode growth fixes it — the paper's Head-Room Allocator.
 - The **simulator is a faithful toy**: it models the mechanism that matters
   (incremental KV-cache allocation, out-of-memory eviction of the youngest
   request, lost progress on restart — the vLLM behaviour from the paper) in pure
   Python. The **numbers are illustrative**, tuned so the insight is discoverable;
-  they are *not* the paper's numbers (the paper uses `vidur`, a physically detailed
+  they are _not_ the paper's numbers (the paper uses `vidur`, a physically detailed
   simulator) and no GPU or real inference is involved.
 
-In short: the *reasoning* and the *mechanism* are genuine; the *scale* is a toy.
+In short: the _reasoning_ and the _mechanism_ are genuine; the _scale_ is a toy.
 This is stated openly in the UI and here because honesty about scope is the point.
 
 ---
+
+## Live demo
+
+**→ [mini-glia.dtlabs.me](https://mini-glia.dtlabs.me)**
+
+The dashboard loads a captured run — press **Play saved run** to watch the agent
+step through its reasoning and the KV-cache animation, or **Watch it reason live**
+to run the two agents unscripted against Gemini right now. Live search is
+stochastic: some runs discover a strong scheduler, others explore dead ends and
+reason their way back — the reasoning is the point, not a guaranteed win.
 
 ## Architecture
 
@@ -187,9 +198,8 @@ simulator stops rewarding the headroom insight, and it runs in CI on every push.
 
 ## Credits
 
-Reproduction of the architecture from *Glia: A Human-Inspired AI for Automated
-Systems Design and Optimization* (Hamadanian, Karimi, Nasr-Esfahany, Noorbakhsh,
+Reproduction of the architecture from _Glia: A Human-Inspired AI for Automated
+Systems Design and Optimization_ (Hamadanian, Karimi, Nasr-Esfahany, Noorbakhsh,
 Chandler, ParandehGheibi, Alizadeh, Balakrishnan — MIT CSAIL,
 [arXiv:2510.27176](https://arxiv.org/abs/2510.27176)). Built as a learning
 exercise and demonstration; all simplifications are mine.
-

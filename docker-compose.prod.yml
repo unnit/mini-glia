@@ -15,9 +15,8 @@ services:
       - MODEL=gemini/gemini-3.1-flash-lite
       # spacing to respect Gemini free-tier rate limits on live runs
       - MIN_CALL_INTERVAL=4
-    # hard memory ceiling so a live run can't starve the clinical app.
-    # ~600MB is comfortable for FastAPI idle + one LiteLLM-backed live run.
-    mem_limit: 600m
+
+    mem_limit: 1g
     mem_reservation: 200m
     # if the container is OOM-killed, restart it rather than leave it dead
     oom_kill_disable: false
