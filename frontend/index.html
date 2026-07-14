@@ -851,6 +851,14 @@
 
       function App() {
         const [dark, setDark] = useState(false);
+        const [isMobile, setIsMobile] = useState(
+          typeof window !== "undefined" && window.innerWidth < 760,
+        );
+        useEffect(() => {
+          const onResize = () => setIsMobile(window.innerWidth < 760);
+          window.addEventListener("resize", onResize);
+          return () => window.removeEventListener("resize", onResize);
+        }, []);
         const [expanded, setExpanded] = useState(false);
         const [showTask, setShowTask] = useState(false);
         const [replay, setReplay] = useState(null);
@@ -1507,8 +1515,9 @@
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns:
-                        "minmax(300px, 1fr) minmax(340px, 1.15fr)",
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "minmax(300px, 1fr) minmax(340px, 1.15fr)",
                       gap: 16,
                     }}
                   >
@@ -1663,7 +1672,13 @@
                         </div>
                       ) : (
                         <>
-                          <div style={{ display: "flex", gap: 14 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: isMobile ? "column" : "row",
+                              gap: 14,
+                            }}
+                          >
                             <ClusterCard
                               title="FCFS Baseline"
                               trace={active.traces?.baseline || { frames: [] }}
